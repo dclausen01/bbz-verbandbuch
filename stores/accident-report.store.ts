@@ -16,6 +16,9 @@ export const useAccidentReportStore = defineStore('accidentReportStore', {
             return {
                 kitId: accidentReport.kit.id,
                 occurredAt: accidentReport.occurredAt,
+                injuredPerson: accidentReport.injuredPerson,
+                injuredGroup: accidentReport.injuredGroup,
+                accidentLocation: accidentReport.accidentLocation,
                 description: accidentReport.description,
                 firstAider: accidentReport.firstAider,
                 materialList: accidentReport.materialList,

@@ -118,6 +118,25 @@ wichtigsten:
 | `GET/POST /api/bestand`, `PUT /api/bestand/:id` | Admin | Bestände/Nachfüllbedarf |
 | `GET/POST /api/user`, `PUT/DELETE /api/user/:id` | Admin | Benutzer & Rollen        |
 
+### Rechtliches: Pflichtangaben & Datenschutz
+
+Grundlage ist **DGUV Vorschrift 1 § 24 Abs. 6** (Dokumentation jeder Erste-Hilfe-
+Leistung, mind. **5 Jahre** verfügbar halten) sowie die **DSGVO** (Gesundheits-
+daten = besondere Kategorie nach Art. 9). Ein Eintrag erfasst die Pflichtangaben:
+
+- Name der **verletzten Person** (+ optional Personengruppe)
+- **Datum/Uhrzeit** des Unfalls und **Ort** des Unfalls
+- **Hergang** sowie **Art und Umfang** der Verletzung/Erkrankung
+- **Erste-Hilfe-Maßnahme** und Name des/der **Ersthelfer:in**
+- **Zeug:innen** (optional), entnommenes **Material**
+- **Eintragungsdatum** und eintragende Person (automatisch)
+
+Datenschutz-Maßnahmen: LDAP-Anmeldung, rollenbasierter Zugriff (Reporter sehen
+nur eigene Einträge, Admins alle), verschlüsseltes Session-Cookie, Betrieb nur
+über HTTPS empfohlen. **Offene Punkte** für den Vollbetrieb: automatische
+Löschung nach Ablauf der Aufbewahrungsfrist, revisionssichere Änderungs-
+historie und PDF-Export (siehe Issues/Roadmap).
+
 ### Automatische Bestandsabbuchung
 
 Wird ein Verbandbuch-Eintrag mit entnommenem Material angelegt, reduziert die

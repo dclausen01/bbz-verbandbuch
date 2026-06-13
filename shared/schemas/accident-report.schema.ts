@@ -8,6 +8,14 @@ export const AccidentReportSchema = z.object({
     createdBy: z.custom<typeof User>(),
     // Zeitpunkt des Vorfalls (nicht nur "wann gespeichert")
     occurredAt: z.string().transform((val) => new Date(val)),
+    // Zeitpunkt der Eintragung (Dokumentationsdatum)
+    createdAt: z.string().transform((val) => new Date(val)).optional(),
+    // Name der verletzten Person (Pflichtangabe)
+    injuredPerson: z.string().default(''),
+    // Personengruppe (z.B. Schüler:in, Beschäftigte:r) – optional
+    injuredGroup: z.string().nullable().default(null),
+    // Ort des Unfalls (Pflichtangabe)
+    accidentLocation: z.string().default(''),
     // Unfallart
     incident: z.string(),
     // Hergang

@@ -26,6 +26,10 @@ export default defineEventHandler(async (event) => {
         if (isNaN(d.getTime())) throw createError({statusCode: 400, statusMessage: 'Ungültiges Datum für occurredAt'})
         patch.occurredAt = d.toISOString()
     }
+    if (body?.injuredPerson !== undefined) patch.injuredPerson = String(body.injuredPerson).trim()
+    if (body?.injuredGroup !== undefined)
+        patch.injuredGroup = body.injuredGroup === null ? null : String(body.injuredGroup).trim()
+    if (body?.accidentLocation !== undefined) patch.accidentLocation = String(body.accidentLocation).trim()
     if (body?.incident !== undefined) patch.incident = String(body.incident).trim()
     if (body?.firstAider !== undefined) patch.firstAider = String(body.firstAider).trim()
     if (body?.description !== undefined) patch.description = String(body.description).trim()

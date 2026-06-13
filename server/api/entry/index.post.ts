@@ -7,14 +7,25 @@ export default defineEventHandler(async (event) => {
 
     const kitId = String(body?.kitId ?? '')
     const occurredAt = body?.occurredAt ? new Date(body.occurredAt) : null
+    const injuredPerson = String(body?.injuredPerson ?? '').trim()
+    const accidentLocation = String(body?.accidentLocation ?? '').trim()
     const description = String(body?.description ?? '').trim()
     const firstAider = String(body?.firstAider ?? '').trim()
     const materialList = body?.materialList
 
-    if (!kitId || !occurredAt || !description || !firstAider || !Array.isArray(materialList)) {
+    if (
+        !kitId ||
+        !occurredAt ||
+        !injuredPerson ||
+        !accidentLocation ||
+        !description ||
+        !firstAider ||
+        !Array.isArray(materialList)
+    ) {
         throw createError({
             statusCode: 400,
-            statusMessage: 'kitId, occurredAt, description, firstAider und materialList sind erforderlich',
+            statusMessage:
+                'kitId, occurredAt, injuredPerson, accidentLocation, description, firstAider und materialList sind erforderlich',
         })
     }
     if (isNaN(occurredAt.getTime())) {
@@ -30,6 +41,9 @@ export default defineEventHandler(async (event) => {
         kitId,
         createdBy: user.id,
         occurredAt: occurredAt.toISOString(),
+        injuredPerson,
+        injuredGroup: body?.injuredGroup != null ? String(body.injuredGroup).trim() : null,
+        accidentLocation,
         incident: String(body?.incident ?? '').trim(),
         firstAider,
         description,

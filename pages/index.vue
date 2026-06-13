@@ -58,7 +58,14 @@
           <td :colspan="columns.length" class="pa-4">
             <v-row dense>
               <v-col cols="12" md="6" lg="4">
+                <p><strong>Verletzte Person:</strong> {{ item.injuredPerson }}
+                  <span v-if="item.injuredGroup">({{ item.injuredGroup }})</span></p>
+              </v-col>
+              <v-col cols="12" md="6" lg="4">
                 <p><strong>Datum und Uhrzeit:</strong> {{ formatDatetimeGerman(item.occurredAt.toISOString()) }}</p>
+              </v-col>
+              <v-col cols="12" md="6" lg="4">
+                <p><strong>Ort des Unfalls:</strong> {{ item.accidentLocation }}</p>
               </v-col>
               <v-col cols="12" md="6" lg="4">
                 <p><strong>Hergang:</strong> {{ item.description }}</p>
@@ -78,6 +85,11 @@
               </v-col>
               <v-col cols="12" md="6" lg="4">
                 <p><strong>Verbandskasten:</strong> {{ item.kit.location }}</p>
+              </v-col>
+              <v-col cols="12" md="6" lg="4">
+                <p><strong>Eingetragen:</strong>
+                  {{ item.createdAt ? formatDatetimeGerman(item.createdAt.toISOString()) : '—' }}
+                  von {{ item.createdBy?.name }}</p>
               </v-col>
               <v-col cols="12">
                 <v-col cols="12" lg="6" v-for="material in item.materialList" :key="material.type">
@@ -116,8 +128,8 @@ const loading = ref<boolean>(true)
 const {user} = useUserSession();
 const headersSmallScreen = [
   {
-    key: "incident",
-    title: "Unfallart"
+    key: "injuredPerson",
+    title: "Verletzte Person"
   },
   {
     key: "occurredAt",
@@ -129,6 +141,10 @@ const headersSmallScreen = [
   }
 ]
 const headersLargeScreen = [
+  {
+    key: "injuredPerson",
+    title: "Verletzte Person"
+  },
   {
     key: 'createdBy.name',
     title: "Ersteller"

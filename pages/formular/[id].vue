@@ -28,6 +28,43 @@
               />
             </v-col>
 
+            <!-- Verletzte Person -->
+            <v-col cols="12" md="7">
+              <v-text-field
+                  v-model="report.injuredPerson"
+                  label="Name der verletzten Person *"
+                  :rules="[rules.required()]"
+                  hint="Vor- und Nachname der verletzten/erkrankten Person."
+                  persistent-hint
+                  density="comfortable"
+              />
+            </v-col>
+
+            <!-- Personengruppe -->
+            <v-col cols="12" md="5">
+              <v-select
+                  v-model="report.injuredGroup"
+                  :items="['Schüler:in', 'Beschäftigte:r', 'Externe:r / Gast']"
+                  label="Personengruppe"
+                  clearable
+                  hint="Optional – zur Einordnung."
+                  persistent-hint
+                  density="comfortable"
+              />
+            </v-col>
+
+            <!-- Ort des Unfalls -->
+            <v-col cols="12">
+              <v-text-field
+                  v-model="report.accidentLocation"
+                  label="Ort des Unfalls *"
+                  :rules="[rules.required()]"
+                  hint="Wo ist es passiert? z.B. Werkstatt 2, Sporthalle, Flur EG."
+                  persistent-hint
+                  density="comfortable"
+              />
+            </v-col>
+
             <!-- Hergang -->
             <v-col cols="12">
               <v-textarea
@@ -198,8 +235,11 @@ const accidentReportStore = useAccidentReportStore()
 const firstAidKitStore = useFirstAidKitStore()
 const occurredAt = ref<string>("")
 const report = ref<AccidentReport>({
+  injuredPerson: '',
+  injuredGroup: null,
+  accidentLocation: '',
   materialList: [] as { type: string, quantity: number }[]
-} as AccidentReport)
+} as unknown as AccidentReport)
 
 
 onMounted(async () => {

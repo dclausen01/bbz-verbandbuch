@@ -43,6 +43,10 @@ export interface EntryDTO {
     kit: FirstAidKitDTO
     createdBy: {id: number; name: string; role: Role}
     occurredAt: string
+    createdAt: string
+    injuredPerson: string
+    injuredGroup: string | null
+    accidentLocation: string
     incident: string
     firstAider: string
     description: string
@@ -110,22 +114,40 @@ function initSchema(d: Database.Database): void {
         );
 
         CREATE TABLE IF NOT EXISTS entries (
-            id            TEXT PRIMARY KEY,
-            kit_id        TEXT NOT NULL REFERENCES first_aid_kits(id) ON DELETE RESTRICT,
-            created_by    INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-            occurred_at   TEXT NOT NULL,
-            incident      TEXT NOT NULL DEFAULT '',
-            first_aider   TEXT NOT NULL DEFAULT '',
-            description   TEXT NOT NULL DEFAULT '',
-            measures      TEXT,
-            material_list TEXT NOT NULL DEFAULT '[]',
-            message       TEXT,
-            witness       TEXT
+            id                TEXT PRIMARY KEY,
+            kit_id            TEXT NOT NULL REFERENCES first_aid_kits(id) ON DELETE RESTRICT,
+            created_by        INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+            occurred_at       TEXT NOT NULL,
+            created_at        TEXT NOT NULL DEFAULT '',
+            injured_person    TEXT NOT NULL DEFAULT '',
+            injured_group     TEXT,
+            accident_location TEXT NOT NULL DEFAULT '',
+            incident          TEXT NOT NULL DEFAULT '',
+            first_aider       TEXT NOT NULL DEFAULT '',
+            description       TEXT NOT NULL DEFAULT '',
+            measures          TEXT,
+            material_list     TEXT NOT NULL DEFAULT '[]',
+            message           TEXT,
+            witness           TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_entries_kit ON entries(kit_id);
         CREATE INDEX IF NOT EXISTS idx_entries_user ON entries(created_by);
     `)
+
+    // Migrationen für bereits bestehende Datenbanken (Spalten ergänzen).
+    ensureColumn(d, 'entries', 'created_at', "created_at TEXT NOT NULL DEFAULT ''")
+    ensureColumn(d, 'entries', 'injured_person', "injured_person TEXT NOT NULL DEFAULT ''")
+    ensureColumn(d, 'entries', 'injured_group', 'injured_group TEXT')
+    ensureColumn(d, 'entries', 'accident_location', "accident_location TEXT NOT NULL DEFAULT ''")
+}
+
+/** Ergänzt eine Spalte, falls sie noch nicht existiert (einfache Migration). */
+function ensureColumn(d: Database.Database, table: string, column: string, ddl: string): void {
+    const cols = d.prepare(`PRAGMA table_info(${table})`).all() as Array<{name: string}>
+    if (!cols.some((c) => c.name === column)) {
+        d.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`)
+    }
 }
 
 /* ----------------------------- Benutzer ------------------------------ */
@@ -296,6 +318,10 @@ export function setKitProductQty(
 interface EntryJoinRow {
     id: string
     occurredAt: string
+    createdAt: string
+    injuredPerson: string
+    injuredGroup: string | null
+    accidentLocation: string
     incident: string
     firstAider: string
     description: string
@@ -313,7 +339,10 @@ interface EntryJoinRow {
 }
 
 const ENTRY_SELECT = `
-    SELECT e.id, e.occurred_at AS occurredAt, e.incident, e.first_aider AS firstAider,
+    SELECT e.id, e.occurred_at AS occurredAt, e.created_at AS createdAt,
+           e.injured_person AS injuredPerson, e.injured_group AS injuredGroup,
+           e.accident_location AS accidentLocation,
+           e.incident, e.first_aider AS firstAider,
            e.description, e.measures, e.material_list AS materialList, e.message, e.witness,
            k.id AS kitId, k.code AS kitCode, k.location AS kitLocation, k.created_at AS kitCreatedAt,
            u.id AS userId, u.name AS userName, u.role AS userRole
@@ -332,6 +361,11 @@ function mapEntry(r: EntryJoinRow): EntryDTO {
     return {
         id: r.id,
         occurredAt: r.occurredAt,
+        // Fallback für vor der Migration angelegte Einträge ohne Eintragungsdatum.
+        createdAt: r.createdAt || r.occurredAt,
+        injuredPerson: r.injuredPerson ?? '',
+        injuredGroup: r.injuredGroup ?? null,
+        accidentLocation: r.accidentLocation ?? '',
         incident: r.incident,
         firstAider: r.firstAider,
         description: r.description,
@@ -360,6 +394,9 @@ export interface EntryInput {
     kitId: string
     createdBy: number
     occurredAt: string
+    injuredPerson: string
+    injuredGroup: string | null
+    accidentLocation: string
     incident: string
     firstAider: string
     description: string
@@ -372,13 +409,17 @@ export interface EntryInput {
 export function createEntry(d: Database.Database, input: EntryInput): EntryDTO {
     const id = randomUUID()
     d.prepare(
-        `INSERT INTO entries (id, kit_id, created_by, occurred_at, incident, first_aider, description, measures, material_list, message, witness)
-         VALUES (@id, @kitId, @createdBy, @occurredAt, @incident, @firstAider, @description, @measures, @materialList, @message, @witness)`,
+        `INSERT INTO entries (id, kit_id, created_by, occurred_at, created_at, injured_person, injured_group, accident_location, incident, first_aider, description, measures, material_list, message, witness)
+         VALUES (@id, @kitId, @createdBy, @occurredAt, @createdAt, @injuredPerson, @injuredGroup, @accidentLocation, @incident, @firstAider, @description, @measures, @materialList, @message, @witness)`,
     ).run({
         id,
         kitId: input.kitId,
         createdBy: input.createdBy,
         occurredAt: input.occurredAt,
+        createdAt: new Date().toISOString(),
+        injuredPerson: input.injuredPerson,
+        injuredGroup: input.injuredGroup,
+        accidentLocation: input.accidentLocation,
         incident: input.incident,
         firstAider: input.firstAider,
         description: input.description,
@@ -436,6 +477,9 @@ export function updateEntry(
     const next = {
         kitId: input.kitId ?? existing.kit.id,
         occurredAt: input.occurredAt ?? existing.occurredAt,
+        injuredPerson: input.injuredPerson ?? existing.injuredPerson,
+        injuredGroup: input.injuredGroup !== undefined ? input.injuredGroup : existing.injuredGroup,
+        accidentLocation: input.accidentLocation ?? existing.accidentLocation,
         incident: input.incident ?? existing.incident,
         firstAider: input.firstAider ?? existing.firstAider,
         description: input.description ?? existing.description,
@@ -445,7 +489,9 @@ export function updateEntry(
         witness: input.witness !== undefined ? input.witness : existing.witness,
     }
     d.prepare(
-        `UPDATE entries SET kit_id = @kitId, occurred_at = @occurredAt, incident = @incident,
+        `UPDATE entries SET kit_id = @kitId, occurred_at = @occurredAt,
+                injured_person = @injuredPerson, injured_group = @injuredGroup,
+                accident_location = @accidentLocation, incident = @incident,
                 first_aider = @firstAider, description = @description, measures = @measures,
                 material_list = @materialList, message = @message, witness = @witness
           WHERE id = @id`,
