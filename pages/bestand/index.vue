@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div class="d-flex align-center mb-4">
+    <div class="d-flex align-center flex-wrap ga-2 mb-4">
       <h2 class="text-h6">Bestände &amp; Nachfüllbedarf</h2>
       <v-spacer/>
       <v-btn color="primary" prepend-icon="mdi-plus" @click="openEdit()">Bestand erfassen</v-btn>

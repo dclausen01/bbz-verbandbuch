@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div class="d-flex align-center mb-4">
+    <div class="d-flex align-center flex-wrap ga-2 mb-4">
       <h2 class="text-h6">Benutzerverwaltung</h2>
       <v-spacer/>
       <v-btn color="primary" prepend-icon="mdi-account-plus" @click="openCreate = true">Benutzer freischalten</v-btn>
