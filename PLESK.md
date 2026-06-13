@@ -20,9 +20,16 @@ Im Dialog „Repository erstellen“:
 
 ### Bereitstellungsaktionen (in das Textfeld einfügen)
 
+> **Wichtig:** Ohne die folgende PATH-Zeile nutzt Plesk das uralte System-Node
+> (v12) – dann scheitert der Build mit `SyntaxError: Unexpected token '='`.
+> Es wird **mindestens Node 20.19** benötigt.
+
 ```bash
-# Node-Version der Plesk-Installation in den PATH legen (Version anpassen!)
-export PATH=/opt/plesk/node/22/bin:$PATH
+# Höchste installierte Plesk-Node-Version automatisch wählen und in den PATH legen
+export PATH="$(ls -d /opt/plesk/node/*/bin 2>/dev/null | sort -V | tail -1):$PATH"
+
+# Zur Kontrolle ins Deploy-Log schreiben (muss >= v20.19 sein!)
+node -v && npm -v
 
 # Abhängigkeiten inkl. Dev-Tools (für den Build) installieren
 npm ci --include=dev
@@ -34,9 +41,16 @@ npm run build
 mkdir -p tmp && touch tmp/restart.txt
 ```
 
-> Den Node-Pfad prüfen: In der Plesk-Node.js-Oberfläche steht die installierte
-> Version (z. B. 20/22). Der Pfad ist `/opt/plesk/node/<major>/bin`.
+> Die erste Zeile sucht den neuesten Ordner unter `/opt/plesk/node/*` (z. B.
+> `/opt/plesk/node/20/bin`). Falls die Auto-Erkennung nicht greift, den Pfad fest
+> eintragen, z. B. `export PATH=/opt/plesk/node/20/bin:$PATH`. Die installierten
+> Versionen zeigt `ls /opt/plesk/node/`.
 > `npm ci` lädt für `better-sqlite3` ein passendes Prebuilt – kein Compiler nötig.
+
+> **Node-Version:** Die App ist auf **Nuxt 4.3** festgelegt und läuft damit auf
+> **Node 20.19+ und Node 22/24**. (Node 21 wird von den Build-Tools nicht
+> unterstützt – nicht verwenden.) In der Plesk-Node.js-Oberfläche dieselbe
+> Version (≥ 20) auswählen, mit der gebaut wird.
 
 ## 2. Node.js-Anwendung einrichten
 
