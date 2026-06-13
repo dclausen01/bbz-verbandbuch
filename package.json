@@ -3,6 +3,9 @@
   "type": "module",
   "private": true,
   "description": "Verbandbuch des BBZ – monolithische Nuxt-App (Frontend + API + LDAP-Login) für den Plesk-Betrieb",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",
@@ -15,7 +18,7 @@
     "@mdi/font": "^7.4.47",
     "better-sqlite3": "^11.8.1",
     "ldapts": "^7.3.1",
-    "nuxt": "^4.2.2",
+    "nuxt": "~4.3.1",
     "nuxt-auth-utils": "^0.5.28",
     "nuxt-authorization": "^0.3.5",
     "qrcode": "^1.5.4",
