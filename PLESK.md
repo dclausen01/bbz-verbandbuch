@@ -74,6 +74,10 @@ In der Node.js-Oberfläche unter „Benutzerdefinierte Umgebungsvariablen“ set
 |-------------------------|------------------------------------------------------------|
 | `NUXT_SESSION_PASSWORD` | zufälliger String, **≥ 32 Zeichen**                        |
 | `DB_PATH`               | `/var/www/vhosts/bbz-rd-eck.com/verbandbuch-data/verbandbuch.db` |
+| `DB_ENCRYPTION_KEY`     | langer Zufallsschlüssel – verschlüsselt die DB (sicher aufbewahren!) |
+| `NUXT_RETENTION_YEARS`  | Aufbewahrungsfrist in Jahren (Default 5)                   |
+| `NUXT_PUBLIC_BGM_EMAIL` | E-Mail der/des BGM-Beauftragten (mailto-Meldung)           |
+| `SMTP_HOST` … `BGM_NOTIFY_EMAIL` | optional: automatischer Mailversand (Plesk-Postfach, kein Exchange nötig) |
 | `NUXT_AUTO_PROVISION`   | `true` (oder `false`, wenn nur freigeschaltete Konten dürfen) |
 | `LDAP_URL`              | `ldaps://dc01.schule.local:636`                            |
 | `LDAP_BASE_DN`          | `OU=Lehrkraefte,DC=schule,DC=local`                        |

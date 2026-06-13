@@ -28,6 +28,43 @@
               />
             </v-col>
 
+            <!-- Verletzte Person -->
+            <v-col cols="12" md="7">
+              <v-text-field
+                  v-model="report.injuredPerson"
+                  label="Name der verletzten Person *"
+                  :rules="[rules.required()]"
+                  hint="Vor- und Nachname der verletzten/erkrankten Person."
+                  persistent-hint
+                  density="comfortable"
+              />
+            </v-col>
+
+            <!-- Personengruppe -->
+            <v-col cols="12" md="5">
+              <v-select
+                  v-model="report.injuredGroup"
+                  :items="['Schüler:in', 'Beschäftigte:r', 'Externe:r / Gast']"
+                  label="Personengruppe"
+                  clearable
+                  hint="Optional – zur Einordnung."
+                  persistent-hint
+                  density="comfortable"
+              />
+            </v-col>
+
+            <!-- Ort des Unfalls -->
+            <v-col cols="12">
+              <v-text-field
+                  v-model="report.accidentLocation"
+                  label="Ort des Unfalls *"
+                  :rules="[rules.required()]"
+                  hint="Wo ist es passiert? z.B. Werkstatt 2, Sporthalle, Flur EG."
+                  persistent-hint
+                  density="comfortable"
+              />
+            </v-col>
+
             <!-- Hergang -->
             <v-col cols="12">
               <v-textarea
@@ -161,6 +198,22 @@
               />
             </v-col>
 
+            <!-- Meldepflichtiger Unfall -->
+            <v-col cols="12">
+              <v-checkbox
+                  v-model="report.reportable"
+                  label="Meldepflichtiger Unfall (Unfallanzeige erforderlich)"
+                  density="comfortable"
+                  hide-details
+              />
+              <v-alert v-if="report.reportable" type="warning" variant="tonal" class="mt-2">
+                Bei mehr als 3 Tagen Arbeits-/Schulunfähigkeit oder tödlichem Ausgang ist eine
+                <strong>Unfallanzeige an den Unfallversicherungsträger</strong> (z.B. Unfallkasse)
+                erforderlich – i.d.R. binnen 3 Tagen. Bitte die zuständige Stelle (BGM-Beauftragte:r)
+                informieren.
+              </v-alert>
+            </v-col>
+
             <!-- Button -->
             <v-col cols="12" class="d-flex justify-space-between">
               <v-btn to="/">
@@ -198,8 +251,12 @@ const accidentReportStore = useAccidentReportStore()
 const firstAidKitStore = useFirstAidKitStore()
 const occurredAt = ref<string>("")
 const report = ref<AccidentReport>({
+  injuredPerson: '',
+  injuredGroup: null,
+  accidentLocation: '',
+  reportable: false,
   materialList: [] as { type: string, quantity: number }[]
-} as AccidentReport)
+} as unknown as AccidentReport)
 
 
 onMounted(async () => {

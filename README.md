@@ -118,6 +118,40 @@ wichtigsten:
 | `GET/POST /api/bestand`, `PUT /api/bestand/:id` | Admin | Bestände/Nachfüllbedarf |
 | `GET/POST /api/user`, `PUT/DELETE /api/user/:id` | Admin | Benutzer & Rollen        |
 
+### Rechtliches: Pflichtangaben & Datenschutz
+
+Grundlage ist **DGUV Vorschrift 1 § 24 Abs. 6** (Dokumentation jeder Erste-Hilfe-
+Leistung, mind. **5 Jahre** verfügbar halten) sowie die **DSGVO** (Gesundheits-
+daten = besondere Kategorie nach Art. 9). Ein Eintrag erfasst die Pflichtangaben:
+
+- Name der **verletzten Person** (+ optional Personengruppe)
+- **Datum/Uhrzeit** des Unfalls und **Ort** des Unfalls
+- **Hergang** sowie **Art und Umfang** der Verletzung/Erkrankung
+- **Erste-Hilfe-Maßnahme** und Name des/der **Ersthelfer:in**
+- **Zeug:innen** (optional), entnommenes **Material**
+- **Eintragungsdatum** und eintragende Person (automatisch)
+
+Datenschutz- & Compliance-Maßnahmen:
+
+- **Zugriff:** LDAP-Anmeldung, rollenbasiert (Reporter nur eigene Einträge,
+  Admins alle), verschlüsseltes Session-Cookie, Betrieb über HTTPS.
+- **Verschlüsselung at rest:** Die SQLite-Datei wird mit SQLCipher verschlüsselt
+  (`DB_ENCRYPTION_KEY`); Dateirechte auf `0600` beschränkt.
+- **Aufbewahrung/Löschung:** Einträge älter als die Frist (`NUXT_RETENTION_YEARS`,
+  Default 5) werden bei Zugriff (max. 1×/12 h) und beim Start automatisch
+  gelöscht – kein separater Cron-Job nötig (optional aber möglich).
+- **Revisionssicherheit:** Jede Änderung (anlegen/ändern/löschen) wird in einem
+  append-only Audit-Protokoll mit **SHA-256-Hash-Kette** festgehalten; der
+  Verlauf inkl. Integritätsprüfung ist je Eintrag einsehbar.
+- **PDF/Druck:** Druckansicht je Eintrag (`/druck/<id>`) → „Als PDF speichern".
+- **Meldepflichtige Unfälle:** Kennzeichen + Hinweistext; optionale
+  Benachrichtigung der/des BGM-Beauftragten per mailto-Link oder SMTP.
+
+> Hinweis: Die Hash-Kette macht Manipulationen am Protokoll **erkennbar**; eine
+> vollständig manipulationssichere Archivierung (WORM) ginge darüber hinaus und
+> ist hier nicht umgesetzt. Vor Produktivnutzung mit der/dem
+> Datenschutzbeauftragten abstimmen.
+
 ### Automatische Bestandsabbuchung
 
 Wird ein Verbandbuch-Eintrag mit entnommenem Material angelegt, reduziert die
