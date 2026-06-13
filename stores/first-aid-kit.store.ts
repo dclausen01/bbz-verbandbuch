@@ -41,6 +41,14 @@ export const useFirstAidKitStore = defineStore('first-aid-kit-store', {
             showSnackbarSuccess("Verbandkasten wurde angelegt.")
             await this.getAllFirstAidKits()
         },
+        async updateFirstAidKit(id: string, code: string, location: string): Promise<void> {
+            await validateUser();
+            const {$msFetch} = useNuxtApp();
+            const {showSnackbarSuccess} = useSnackBar();
+            await $msFetch(`${this._route}/${id}`, {method: "PUT", body: {code, location}})
+            showSnackbarSuccess("Verbandkasten wurde aktualisiert.")
+            await this.getAllFirstAidKits()
+        },
         async deleteFirstAidKit(id: string): Promise<void> {
             await validateUser();
             const {$msFetch} = useNuxtApp();
