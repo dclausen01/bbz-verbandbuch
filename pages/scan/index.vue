@@ -10,15 +10,45 @@
       <v-col cols="12" md="7">
         <v-card border rounded="lg">
           <v-card-text>
-            <div v-if="cameraSupported">
-              <video ref="videoEl" class="scan-video" autoplay muted playsinline/>
-              <div class="text-caption text-medium-emphasis mt-2">
-                {{ scanning ? 'Kamera aktiv – QR-Code in den Rahmen halten.' : 'Kamera wird gestartet…' }}
+            <div v-if="!secureContext">
+              <v-alert type="warning" variant="tonal">
+                Kamera-Zugriff ist nur über eine sichere Verbindung (HTTPS) möglich.
+                Bitte die Seite über <code>https://</code> öffnen oder unten den Kasten manuell auswählen.
+              </v-alert>
+            </div>
+
+            <div v-else>
+              <video
+                  ref="videoEl"
+                  class="scan-video"
+                  :class="{ 'd-none': !scanning }"
+                  autoplay
+                  muted
+                  playsinline
+              />
+
+              <div v-if="scanning" class="text-caption text-medium-emphasis mt-2">
+                Kamera aktiv – QR-Code in den Rahmen halten.
+              </div>
+
+              <div v-else class="text-center py-6">
+                <v-icon size="48" class="mb-2">mdi-camera</v-icon>
+                <v-alert
+                    v-if="errorMessage"
+                    type="warning"
+                    variant="tonal"
+                    class="mb-4 text-left"
+                >
+                  {{ errorMessage }}
+                </v-alert>
+                <div class="mb-4 text-body-2">
+                  Für das Scannen wird der Zugriff auf die Kamera benötigt.
+                </div>
+                <v-btn color="primary" prepend-icon="mdi-camera" :loading="starting" @click="startCamera">
+                  Kamera starten
+                </v-btn>
               </div>
             </div>
-            <v-alert v-else type="warning" variant="tonal">
-              Dieses Gerät/Browser unterstützt das Kamera-Scannen nicht. Bitte den Kasten unten manuell auswählen.
-            </v-alert>
           </v-card-text>
         </v-card>
       </v-col>
@@ -50,64 +80,123 @@
   </div>
 </template>
 <script setup lang="ts">
+import jsQR from 'jsqr'
+
 definePageMeta({middleware: ['authenticated']})
 
 const firstAidKitStore = useFirstAidKitStore()
 const videoEl = ref<HTMLVideoElement | null>(null)
-const cameraSupported = ref(false)
+const secureContext = ref(true)
 const scanning = ref(false)
+const starting = ref(false)
+const errorMessage = ref('')
 const selectedKitId = ref<string | null>(null)
 
 let stream: MediaStream | null = null
 let detector: any = null
+let canvas: HTMLCanvasElement | null = null
 let rafId: number | null = null
+let lastDecode = 0
 
 onMounted(async () => {
   await firstAidKitStore.getAllFirstAidKits()
-
-  // BarcodeDetector ist nativ (Chrome/Edge/Android) – kein zusätzliches Paket nötig.
-  const hasDetector = typeof window !== 'undefined' && 'BarcodeDetector' in window
-  const hasCamera = !!navigator.mediaDevices?.getUserMedia
-  cameraSupported.value = hasDetector && hasCamera
-  if (cameraSupported.value) await startCamera()
+  // getUserMedia ist nur in sicheren Kontexten (HTTPS oder localhost) verfügbar.
+  secureContext.value = !!navigator.mediaDevices?.getUserMedia
 })
 
 onBeforeUnmount(stopCamera)
 
 async function startCamera() {
+  errorMessage.value = ''
+  starting.value = true
   try {
-    // @ts-expect-error – BarcodeDetector ist (noch) nicht in den TS-DOM-Typen.
-    detector = new window.BarcodeDetector({formats: ['qr_code']})
-    stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}})
+    // Schnelle native Erkennung nutzen, falls vorhanden (Android/Chrome) …
+    if ('BarcodeDetector' in window) {
+      try {
+        // @ts-expect-error – BarcodeDetector ist (noch) nicht in den TS-DOM-Typen.
+        detector = new window.BarcodeDetector({formats: ['qr_code']})
+      } catch {
+        detector = null
+      }
+    }
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: {ideal: 'environment'}},
+    })
     if (videoEl.value) {
       videoEl.value.srcObject = stream
+      await videoEl.value.play().catch(() => undefined)
       scanning.value = true
-      scanLoop()
+      lastDecode = 0
+      rafId = requestAnimationFrame(scanLoop)
     }
-  } catch (e) {
-    cameraSupported.value = false
+  } catch (e: any) {
+    // Häufigster Fall: Nutzer hat die Berechtigung verweigert.
+    if (e?.name === 'NotAllowedError' || e?.name === 'SecurityError') {
+      errorMessage.value =
+          'Kein Kamerazugriff. Bitte die Kamera-Berechtigung für diese Seite erlauben und erneut versuchen.'
+    } else if (e?.name === 'NotFoundError' || e?.name === 'OverconstrainedError') {
+      errorMessage.value = 'Es wurde keine geeignete Kamera gefunden.'
+    } else {
+      errorMessage.value = 'Die Kamera konnte nicht gestartet werden. Bitte den Kasten unten manuell wählen.'
+    }
+    scanning.value = false
+  } finally {
+    starting.value = false
   }
 }
 
 function stopCamera() {
   scanning.value = false
   if (rafId) cancelAnimationFrame(rafId)
+  rafId = null
   stream?.getTracks().forEach((t) => t.stop())
   stream = null
 }
 
-async function scanLoop() {
-  if (!scanning.value || !videoEl.value || !detector) return
-  try {
-    const codes = await detector.detect(videoEl.value)
-    if (codes?.length) {
-      handleResult(codes[0].rawValue as string)
-      return
+async function scanLoop(ts: number) {
+  if (!scanning.value || !videoEl.value) return
+  const video = videoEl.value
+
+  // Nur ein paar Mal pro Sekunde dekodieren – schont schwächere Geräte.
+  if (video.readyState >= 2 && ts - lastDecode > 200) {
+    lastDecode = ts
+    try {
+      let value: string | null = null
+      if (detector) {
+        const codes = await detector.detect(video)
+        if (codes?.length) value = codes[0].rawValue as string
+      } else {
+        value = decodeWithJsQr(video)
+      }
+      if (value) {
+        handleResult(value)
+        return
+      }
+    } catch {
+      /* einzelne Frames können fehlschlagen – weiter versuchen */
     }
-  } catch {
-    /* einzelne Frames können fehlschlagen – einfach weiter versuchen */
   }
   rafId = requestAnimationFrame(scanLoop)
+}
+
+function decodeWithJsQr(video: HTMLVideoElement): string | null {
+  // Auf max. 640px Breite herunterskalieren – schneller als volle Auflösung.
+  const maxW = 640
+  const scale = Math.min(1, maxW / (video.videoWidth || maxW))
+  const w = Math.round((video.videoWidth || maxW) * scale)
+  const h = Math.round((video.videoHeight || maxW) * scale)
+  if (!w || !h) return null
+
+  if (!canvas) canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d', {willReadFrequently: true})
+  if (!ctx) return null
+  ctx.drawImage(video, 0, 0, w, h)
+  const image = ctx.getImageData(0, 0, w, h)
+  const result = jsQR(image.data, w, h, {inversionAttempts: 'dontInvert'})
+  return result?.data ?? null
 }
 
 function handleResult(value: string) {
