@@ -1,0 +1,15 @@
+node_modules
+.nuxt
+.nitro
+.output
+.cache
+.git
+.gitignore
+.env
+.env.*
+data
+*.sqlite*
+*.db
+*.db-shm
+*.db-wal
+README.md

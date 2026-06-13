@@ -1,0 +1,12 @@
+[
+  {
+    "loginSub": "j.doe",
+    "name": "John Doe",
+    "role": "ADMIN"
+  },
+  {
+    "loginSub": "m.fowler",
+    "name": "Martin Fowler",
+    "role": "REPORTER"
+  }
+]
