@@ -390,6 +390,42 @@ export function createEntry(d: Database.Database, input: EntryInput): EntryDTO {
     return getEntry(d, id)!
 }
 
+/**
+ * Bucht entnommenes Material vom Bestand des Kastens ab. Für jede Position wird
+ * das Produkt per Typ-Name gesucht und – falls für diesen Kasten ein Bestand
+ * (kit_products) geführt wird – der Ist-Bestand um die Menge reduziert (nie
+ * unter 0). Materialien ohne geführten Bestand werden übersprungen.
+ * Läuft als Transaktion.
+ */
+export function applyMaterialWithdrawal(
+    d: Database.Database,
+    kitId: string,
+    items: MaterialItem[],
+): void {
+    const findProduct = d.prepare('SELECT id FROM products WHERE type = ?')
+    const findKitProduct = d.prepare(
+        'SELECT id, current_qty AS currentQty FROM kit_products WHERE kit_id = ? AND product_id = ?',
+    )
+    const updateQty = d.prepare('UPDATE kit_products SET current_qty = ?, updated_at = ? WHERE id = ?')
+
+    const tx = d.transaction((list: MaterialItem[]) => {
+        for (const item of list) {
+            const menge = Number(item.quantity) || 0
+            if (menge <= 0) continue
+            const product = findProduct.get(item.type) as {id: string} | undefined
+            if (!product) continue
+            const kp = findKitProduct.get(kitId, product.id) as
+                | {id: string; currentQty: number}
+                | undefined
+            if (!kp) continue
+            const next = Math.max(0, kp.currentQty - menge)
+            updateQty.run(next, new Date().toISOString(), kp.id)
+        }
+    })
+    tx(items)
+}
+
+
 export function updateEntry(
     d: Database.Database,
     id: string,

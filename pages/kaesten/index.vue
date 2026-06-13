@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div class="d-flex align-center mb-4">
+    <div class="d-flex align-center flex-wrap ga-2 mb-4">
       <h2 class="text-h6">Verbandkästen</h2>
       <v-spacer/>
       <v-btn
@@ -63,6 +63,14 @@
             />
             <v-btn
                 v-if="isAdmin"
+                icon="mdi-pencil"
+                variant="text"
+                size="small"
+                title="Bearbeiten / Umbenennen"
+                @click="openEdit(kit)"
+            />
+            <v-btn
+                v-if="isAdmin"
                 icon="mdi-delete"
                 variant="text"
                 color="error"
@@ -104,6 +112,36 @@
       </v-card>
     </v-dialog>
 
+    <!-- Bearbeiten-Dialog -->
+    <v-dialog v-model="openEditDialog" max-width="480">
+      <v-card>
+        <v-card-title>Verbandkasten bearbeiten</v-card-title>
+        <v-card-text>
+          <v-form ref="editFormRef" v-model="editFormValid" @submit.prevent="saveEdit">
+            <v-text-field
+                v-model="editKit.code"
+                label="Code (QR) *"
+                hint="z.B. KASTEN-001 – steckt im QR-Code"
+                persistent-hint
+                :rules="[rules.required()]"
+            />
+            <v-text-field
+                v-model="editKit.location"
+                label="Standort *"
+                hint="z.B. Raum 1.12"
+                persistent-hint
+                :rules="[rules.required()]"
+            />
+          </v-form>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer/>
+          <v-btn @click="openEditDialog = false">Abbrechen</v-btn>
+          <v-btn color="primary" variant="tonal" @click="saveEdit">Speichern</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <app-dialog
         v-model="openDeleteDialog"
         title="Verbandkasten löschen"
@@ -130,10 +168,14 @@ const loading = ref(true)
 const qrCodes = reactive<Record<string, string>>({})
 
 const openCreateDialog = ref(false)
+const openEditDialog = ref(false)
 const openDeleteDialog = ref(false)
 const formRef = ref<any>(null)
 const formValid = ref(false)
+const editFormRef = ref<any>(null)
+const editFormValid = ref(false)
 const newKit = reactive({code: '', location: ''})
+const editKit = reactive({id: '', code: '', location: ''})
 const kitToDelete = ref<FirstAidKit | null>(null)
 
 async function renderQrCodes() {
@@ -158,6 +200,22 @@ async function createKit() {
   openCreateDialog.value = false
   newKit.code = ''
   newKit.location = ''
+  await renderQrCodes()
+}
+
+function openEdit(kit: FirstAidKit) {
+  editKit.id = kit.id
+  editKit.code = kit.code
+  editKit.location = kit.location
+  openEditDialog.value = true
+}
+
+async function saveEdit() {
+  const ok = await editFormRef.value?.validate?.()
+  if (!ok?.valid) return
+  await firstAidKitStore.updateFirstAidKit(editKit.id, editKit.code.trim(), editKit.location.trim())
+  openEditDialog.value = false
+  // QR-Codes neu rendern, da sich der Code (QR-Inhalt) geändert haben kann
   await renderQrCodes()
 }
 

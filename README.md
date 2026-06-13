@@ -117,3 +117,12 @@ wichtigsten:
 | `POST/DELETE /api/product[/:id]` | Admin       | Materialien verwalten          |
 | `GET/POST /api/bestand`, `PUT /api/bestand/:id` | Admin | Bestände/Nachfüllbedarf |
 | `GET/POST /api/user`, `PUT/DELETE /api/user/:id` | Admin | Benutzer & Rollen        |
+
+### Automatische Bestandsabbuchung
+
+Wird ein Verbandbuch-Eintrag mit entnommenem Material angelegt, reduziert die
+App den Ist-Bestand des betroffenen Kastens automatisch (pro Material, sofern
+dafür ein Bestand geführt wird; nie unter 0). Nachträgliche Änderungen oder das
+Löschen von Einträgen passen den Bestand **nicht** automatisch an – Korrekturen
+nehmen Admins direkt unter **Bestände** vor. Verbandkästen lassen sich dort bzw.
+unter **Verbandkästen** auch umbenennen (Code/Standort).

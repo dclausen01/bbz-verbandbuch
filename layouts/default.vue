@@ -66,8 +66,8 @@
     </v-app-bar>
 
     <v-main>
-      <v-container>
-        <v-sheet rounded="lg" elevation="4" class="pa-4">
+      <v-container class="px-2 px-sm-4">
+        <v-sheet rounded="lg" elevation="4" class="pa-3 pa-sm-4">
           <slot/>
         </v-sheet>
       </v-container>
@@ -89,11 +89,17 @@ interface NavItem {
   adminOnly?: boolean
 }
 
-const isDrawerOpen = ref<boolean>(true);
 const {user, clear} = useUserSession();
 const {snackbar} = useSnackBar()
 const {mdAndUp} = useDisplay()
 const route = useRoute()
+
+// Auf großen Screens ist die Sidebar dauerhaft sichtbar (permanent), auf
+// kleinen ein Overlay, das geschlossen startet und nach Navigation zugeht.
+const isDrawerOpen = ref<boolean>(false);
+watch(() => route.path, () => {
+  if (!mdAndUp.value) isDrawerOpen.value = false
+})
 
 const navItems: NavItem[] = [
   {title: 'Verbandbuch', to: '/', icon: 'mdi-book-open-variant'},

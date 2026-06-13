@@ -1,4 +1,4 @@
-import {createEntry, getDb, getKit, type MaterialItem} from '../../utils/db'
+import {applyMaterialWithdrawal, createEntry, getDb, getKit, type MaterialItem} from '../../utils/db'
 import {requireAuth} from '../../utils/auth'
 
 export default defineEventHandler(async (event) => {
@@ -41,6 +41,10 @@ export default defineEventHandler(async (event) => {
         message: body?.message != null ? String(body.message).trim() : null,
         witness: body?.witness != null ? String(body.witness).trim() : null,
     })
+
+    // Entnommenes Material automatisch vom Bestand des Kastens abbuchen
+    // (nur für Materialien, für die ein Bestand geführt wird).
+    applyMaterialWithdrawal(db, kitId, entry.materialList)
 
     setResponseStatus(event, 201)
     return entry
