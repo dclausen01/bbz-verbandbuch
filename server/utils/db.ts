@@ -1,15 +1,19 @@
-import {mkdirSync} from 'node:fs'
+import {chmodSync, mkdirSync} from 'node:fs'
 import {dirname, resolve} from 'node:path'
-import {randomUUID} from 'node:crypto'
-import Database from 'better-sqlite3'
+import {createHash, randomUUID} from 'node:crypto'
+import Database from 'better-sqlite3-multiple-ciphers'
 
 /**
- * Zentrale SQLite-Anbindung (better-sqlite3) für den Monolithen.
+ * Zentrale SQLite-Anbindung (better-sqlite3-multiple-ciphers) für den Monolithen.
  *
  * Bewusst ohne ORM: Das Datenmodell ist klein, und better-sqlite3 lässt sich
  * problemlos in das Nitro-Bundle einbinden (kein Decorator-/reflect-metadata-
  * Risiko wie bei TypeORM). Eine einzige Datei genügt für den Plesk-Betrieb –
  * kein separater Datenbank-Dienst nötig.
+ *
+ * Verschlüsselung „at rest": Ist DB_ENCRYPTION_KEY gesetzt, wird die Datei mit
+ * SQLCipher verschlüsselt. Eine bereits vorhandene Klartext-Datei wird beim
+ * ersten Start transparent verschlüsselt (PRAGMA rekey).
  */
 
 export type Role = 'REPORTER' | 'ADMIN'
@@ -54,6 +58,7 @@ export interface EntryDTO {
     materialList: MaterialItem[]
     message: string | null
     witness: string | null
+    reportable: boolean
 }
 
 export interface KitProductDTO {
@@ -73,13 +78,55 @@ export function getDb(): Database.Database {
 
     const configured = useRuntimeConfig().dbPath || process.env.DB_PATH
     const file = configured ? resolve(configured) : resolve(process.cwd(), 'data', 'verbandbuch.db')
-    mkdirSync(dirname(file), {recursive: true})
+    mkdirSync(dirname(file), {recursive: true, mode: 0o700})
 
     db = new Database(file)
+    applyEncryption(db, process.env.DB_ENCRYPTION_KEY)
     db.pragma('journal_mode = WAL')
     db.pragma('foreign_keys = ON')
     initSchema(db)
+    hardenFilePermissions(file)
     return db
+}
+
+/**
+ * Aktiviert die Verschlüsselung, falls ein Schlüssel gesetzt ist. Erkennt eine
+ * bereits vorhandene Klartext-Datei und verschlüsselt sie transparent (rekey).
+ */
+function applyEncryption(d: Database.Database, key: string | undefined): void {
+    if (!key) {
+        console.warn(
+            '[DB] DB_ENCRYPTION_KEY ist nicht gesetzt – die Datenbank wird UNVERSCHLÜSSELT gespeichert. ' +
+                'Für den Produktivbetrieb mit Gesundheitsdaten dringend einen Schlüssel setzen.',
+        )
+        return
+    }
+    const escaped = key.replace(/'/g, "''")
+    // Ist die Datei aktuell als Klartext lesbar (oder neu/leer)? Dann mit rekey
+    // verschlüsseln; andernfalls bestehende verschlüsselte Datei mit key öffnen.
+    let plaintext = false
+    try {
+        d.prepare('SELECT count(*) FROM sqlite_master').get()
+        plaintext = true
+    } catch {
+        plaintext = false
+    }
+    if (plaintext) {
+        d.pragma(`rekey='${escaped}'`)
+    } else {
+        d.pragma(`key='${escaped}'`)
+    }
+}
+
+/** Beschränkt die Dateirechte der DB (und WAL/SHM) auf den Eigentümer (0600). */
+function hardenFilePermissions(file: string): void {
+    for (const f of [file, `${file}-wal`, `${file}-shm`]) {
+        try {
+            chmodSync(f, 0o600)
+        } catch {
+            /* Datei existiert evtl. noch nicht – ignorieren */
+        }
+    }
 }
 
 function initSchema(d: Database.Database): void {
@@ -128,11 +175,28 @@ function initSchema(d: Database.Database): void {
             measures          TEXT,
             material_list     TEXT NOT NULL DEFAULT '[]',
             message           TEXT,
-            witness           TEXT
+            witness           TEXT,
+            reportable        INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE INDEX IF NOT EXISTS idx_entries_kit ON entries(kit_id);
         CREATE INDEX IF NOT EXISTS idx_entries_user ON entries(created_by);
+
+        -- Revisions-/Audit-Protokoll (append-only, mit Hash-Kette zur
+        -- Manipulationserkennung). Jede Änderung an einem Eintrag erzeugt hier
+        -- eine Zeile mit vollständigem Datenstand.
+        CREATE TABLE IF NOT EXISTS entry_revisions (
+            seq            INTEGER PRIMARY KEY AUTOINCREMENT,
+            entry_id       TEXT NOT NULL,
+            action         TEXT NOT NULL,
+            changed_by_id  INTEGER,
+            changed_by     TEXT NOT NULL DEFAULT '',
+            changed_at     TEXT NOT NULL,
+            data_json      TEXT NOT NULL,
+            prev_hash      TEXT NOT NULL DEFAULT '',
+            hash           TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_revisions_entry ON entry_revisions(entry_id);
     `)
 
     // Migrationen für bereits bestehende Datenbanken (Spalten ergänzen).
@@ -140,6 +204,7 @@ function initSchema(d: Database.Database): void {
     ensureColumn(d, 'entries', 'injured_person', "injured_person TEXT NOT NULL DEFAULT ''")
     ensureColumn(d, 'entries', 'injured_group', 'injured_group TEXT')
     ensureColumn(d, 'entries', 'accident_location', "accident_location TEXT NOT NULL DEFAULT ''")
+    ensureColumn(d, 'entries', 'reportable', 'reportable INTEGER NOT NULL DEFAULT 0')
 }
 
 /** Ergänzt eine Spalte, falls sie noch nicht existiert (einfache Migration). */
@@ -329,6 +394,7 @@ interface EntryJoinRow {
     materialList: string
     message: string | null
     witness: string | null
+    reportable: number
     kitId: string
     kitCode: string
     kitLocation: string
@@ -343,7 +409,7 @@ const ENTRY_SELECT = `
            e.injured_person AS injuredPerson, e.injured_group AS injuredGroup,
            e.accident_location AS accidentLocation,
            e.incident, e.first_aider AS firstAider,
-           e.description, e.measures, e.material_list AS materialList, e.message, e.witness,
+           e.description, e.measures, e.material_list AS materialList, e.message, e.witness, e.reportable,
            k.id AS kitId, k.code AS kitCode, k.location AS kitLocation, k.created_at AS kitCreatedAt,
            u.id AS userId, u.name AS userName, u.role AS userRole
       FROM entries e
@@ -373,6 +439,7 @@ function mapEntry(r: EntryJoinRow): EntryDTO {
         materialList,
         message: r.message,
         witness: r.witness,
+        reportable: !!r.reportable,
         kit: {id: r.kitId, code: r.kitCode, location: r.kitLocation, createdAt: r.kitCreatedAt},
         createdBy: {id: r.userId, name: r.userName, role: r.userRole},
     }
@@ -404,13 +471,14 @@ export interface EntryInput {
     materialList: MaterialItem[]
     message: string | null
     witness: string | null
+    reportable: boolean
 }
 
 export function createEntry(d: Database.Database, input: EntryInput): EntryDTO {
     const id = randomUUID()
     d.prepare(
-        `INSERT INTO entries (id, kit_id, created_by, occurred_at, created_at, injured_person, injured_group, accident_location, incident, first_aider, description, measures, material_list, message, witness)
-         VALUES (@id, @kitId, @createdBy, @occurredAt, @createdAt, @injuredPerson, @injuredGroup, @accidentLocation, @incident, @firstAider, @description, @measures, @materialList, @message, @witness)`,
+        `INSERT INTO entries (id, kit_id, created_by, occurred_at, created_at, injured_person, injured_group, accident_location, incident, first_aider, description, measures, material_list, message, witness, reportable)
+         VALUES (@id, @kitId, @createdBy, @occurredAt, @createdAt, @injuredPerson, @injuredGroup, @accidentLocation, @incident, @firstAider, @description, @measures, @materialList, @message, @witness, @reportable)`,
     ).run({
         id,
         kitId: input.kitId,
@@ -427,6 +495,7 @@ export function createEntry(d: Database.Database, input: EntryInput): EntryDTO {
         materialList: JSON.stringify(input.materialList ?? []),
         message: input.message,
         witness: input.witness,
+        reportable: input.reportable ? 1 : 0,
     })
     return getEntry(d, id)!
 }
@@ -487,22 +556,144 @@ export function updateEntry(
         materialList: input.materialList ?? existing.materialList,
         message: input.message !== undefined ? input.message : existing.message,
         witness: input.witness !== undefined ? input.witness : existing.witness,
+        reportable: input.reportable !== undefined ? input.reportable : existing.reportable,
     }
     d.prepare(
         `UPDATE entries SET kit_id = @kitId, occurred_at = @occurredAt,
                 injured_person = @injuredPerson, injured_group = @injuredGroup,
                 accident_location = @accidentLocation, incident = @incident,
                 first_aider = @firstAider, description = @description, measures = @measures,
-                material_list = @materialList, message = @message, witness = @witness
+                material_list = @materialList, message = @message, witness = @witness,
+                reportable = @reportable
           WHERE id = @id`,
     ).run({
         id,
         ...next,
         materialList: JSON.stringify(next.materialList ?? []),
+        reportable: next.reportable ? 1 : 0,
     })
     return getEntry(d, id)
 }
 
 export function deleteEntry(d: Database.Database, id: string): boolean {
     return d.prepare('DELETE FROM entries WHERE id = ?').run(id).changes > 0
+}
+
+/* --------------------- Revisionssicherheit / Paper Trail --------------------- */
+
+export type RevisionAction = 'CREATE' | 'UPDATE' | 'DELETE'
+
+export interface RevisionActor {
+    id: number
+    name: string
+}
+
+export interface RevisionDTO {
+    seq: number
+    entryId: string
+    action: RevisionAction
+    changedById: number | null
+    changedBy: string
+    changedAt: string
+    data: EntryDTO
+    prevHash: string
+    hash: string
+    /** Ergebnis der Hash-Ketten-Prüfung (true = unverändert). */
+    valid: boolean
+}
+
+/**
+ * Schreibt eine Revision in das append-only Audit-Protokoll. Über eine
+ * SHA-256-Hash-Kette (jeder Eintrag bindet den Hash des vorherigen ein) lassen
+ * sich nachträgliche Manipulationen am Protokoll erkennen.
+ */
+export function recordEntryRevision(
+    d: Database.Database,
+    action: RevisionAction,
+    entry: EntryDTO,
+    actor: RevisionActor,
+): void {
+    const changedAt = new Date().toISOString()
+    const dataJson = JSON.stringify(entry)
+    const prev = d.prepare('SELECT hash FROM entry_revisions ORDER BY seq DESC LIMIT 1').get() as
+        | {hash: string}
+        | undefined
+    const prevHash = prev?.hash ?? ''
+    const hash = createHash('sha256')
+        .update(prevHash + entry.id + action + changedAt + String(actor.id) + dataJson)
+        .digest('hex')
+    d.prepare(
+        `INSERT INTO entry_revisions (entry_id, action, changed_by_id, changed_by, changed_at, data_json, prev_hash, hash)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(entry.id, action, actor.id, actor.name, changedAt, dataJson, prevHash, hash)
+}
+
+/** Liefert die Revisionen eines Eintrags (älteste zuerst) inkl. Ketten-Prüfung. */
+export function listEntryRevisions(d: Database.Database, entryId: string): RevisionDTO[] {
+    const rows = d
+        .prepare('SELECT * FROM entry_revisions WHERE entry_id = ? ORDER BY seq ASC')
+        .all(entryId) as Array<Record<string, any>>
+    return rows.map((r) => {
+        const recomputed = createHash('sha256')
+            .update(r.prev_hash + r.entry_id + r.action + r.changed_at + String(r.changed_by_id) + r.data_json)
+            .digest('hex')
+        return {
+            seq: r.seq,
+            entryId: r.entry_id,
+            action: r.action,
+            changedById: r.changed_by_id,
+            changedBy: r.changed_by,
+            changedAt: r.changed_at,
+            data: JSON.parse(r.data_json),
+            prevHash: r.prev_hash,
+            hash: r.hash,
+            valid: recomputed === r.hash,
+        }
+    })
+}
+
+/* ------------------------ Aufbewahrung / Löschung ------------------------ */
+
+/**
+ * Löscht Einträge, deren Unfalldatum älter als die Aufbewahrungsfrist ist
+ * (DSGVO-Speicherbegrenzung; DGUV-Mindestfrist 5 Jahre). Gelöschte Einträge
+ * werden zuvor im Revisionsprotokoll vermerkt. Gibt die Anzahl zurück.
+ */
+export function purgeExpiredEntries(d: Database.Database, retentionYears: number): number {
+    const cutoff = new Date()
+    cutoff.setFullYear(cutoff.getFullYear() - retentionYears)
+    const cutoffIso = cutoff.toISOString()
+
+    const expired = d
+        .prepare('SELECT id FROM entries WHERE occurred_at < ?')
+        .all(cutoffIso) as Array<{id: string}>
+    if (expired.length === 0) return 0
+
+    const system: RevisionActor = {id: 0, name: 'System (Aufbewahrungsfrist)'}
+    const tx = d.transaction((ids: Array<{id: string}>) => {
+        for (const {id} of ids) {
+            const entry = getEntry(d, id)
+            if (entry) recordEntryRevision(d, 'DELETE', entry, system)
+            d.prepare('DELETE FROM entries WHERE id = ?').run(id)
+        }
+    })
+    tx(expired)
+    console.info(`[DB] Aufbewahrung: ${expired.length} abgelaufene Eintrag/Einträge gelöscht (älter als ${cutoffIso}).`)
+    return expired.length
+}
+
+let lastPurge = 0
+/**
+ * Stößt die Löschung abgelaufener Einträge an – höchstens einmal alle 12 Stunden,
+ * damit das bei jedem Request aufgerufen werden kann, ohne zu bremsen.
+ */
+export function maybePurgeExpiredEntries(d: Database.Database, retentionYears: number): void {
+    const now = Date.now()
+    if (now - lastPurge < 12 * 60 * 60 * 1000) return
+    lastPurge = now
+    try {
+        purgeExpiredEntries(d, retentionYears)
+    } catch (e) {
+        console.error('[DB] Aufbewahrungs-Löschung fehlgeschlagen:', e)
+    }
 }

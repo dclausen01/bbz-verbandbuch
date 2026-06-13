@@ -26,6 +26,7 @@ export const useAccidentReportStore = defineStore('accidentReportStore', {
                 incident: accidentReport.incident,
                 measures: accidentReport.measures,
                 witness: accidentReport.witness,
+                reportable: accidentReport.reportable,
             }
         },
         async getAllAccidentReportsForUser(): Promise<void> {
@@ -81,6 +82,12 @@ export const useAccidentReportStore = defineStore('accidentReportStore', {
                 method: "DELETE"
             })
             showSnackbarSuccess("Der Verbandsbucheintrag wurde erfolgreich gelöscht.")
+        },
+
+        async getRevisions(id: string): Promise<any[]> {
+            await validateUser();
+            const {$msFetch} = useNuxtApp();
+            return await $msFetch(`${this._route}/${id}/revisions`)
         },
     },
 })

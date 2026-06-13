@@ -31,6 +31,8 @@ export const AccidentReportSchema = z.object({
     message: z.string().nullable().default(null),
     // Zeuge
     witness: z.string().nullable().default(null),
+    // Meldepflichtiger Unfall (Unfallanzeige an den Unfallversicherungsträger)
+    reportable: z.boolean().default(false),
 })
 
 export type AccidentReport = z.infer<typeof AccidentReportSchema>

@@ -1,5 +1,13 @@
-import {applyMaterialWithdrawal, createEntry, getDb, getKit, type MaterialItem} from '../../utils/db'
+import {
+    applyMaterialWithdrawal,
+    createEntry,
+    getDb,
+    getKit,
+    recordEntryRevision,
+    type MaterialItem,
+} from '../../utils/db'
 import {requireAuth} from '../../utils/auth'
+import {sendReportableNotification} from '../../utils/mailer'
 
 export default defineEventHandler(async (event) => {
     const user = await requireAuth(event)
@@ -54,11 +62,21 @@ export default defineEventHandler(async (event) => {
         })),
         message: body?.message != null ? String(body.message).trim() : null,
         witness: body?.witness != null ? String(body.witness).trim() : null,
+        reportable: body?.reportable === true,
     })
+
+    // Revisionsprotokoll (Paper Trail) schreiben.
+    recordEntryRevision(db, 'CREATE', entry, {id: user.id, name: user.name})
 
     // Entnommenes Material automatisch vom Bestand des Kastens abbuchen
     // (nur für Materialien, für die ein Bestand geführt wird).
     applyMaterialWithdrawal(db, kitId, entry.materialList)
+
+    // Bei meldepflichtigen Unfällen optional die/den BGM-Beauftragte:n
+    // benachrichtigen (nur wenn SMTP konfiguriert ist; blockiert nie).
+    if (entry.reportable) {
+        sendReportableNotification(entry).catch(() => undefined)
+    }
 
     setResponseStatus(event, 201)
     return entry

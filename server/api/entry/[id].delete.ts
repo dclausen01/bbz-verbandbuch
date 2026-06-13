@@ -1,4 +1,4 @@
-import {deleteEntry, getDb, getEntry} from '../../utils/db'
+import {deleteEntry, getDb, getEntry, recordEntryRevision} from '../../utils/db'
 import {requireAuth} from '../../utils/auth'
 
 export default defineEventHandler(async (event) => {
@@ -12,6 +12,8 @@ export default defineEventHandler(async (event) => {
     const istBerechtigt = user.role === 'ADMIN' || entry.createdBy.id === user.id
     if (!istBerechtigt) throw createError({statusCode: 403, statusMessage: 'Keine Berechtigung für diese Aktion'})
 
+    // Löschung revisionssicher protokollieren (Datenstand bleibt im Audit-Log).
+    recordEntryRevision(db, 'DELETE', entry, {id: user.id, name: user.name})
     deleteEntry(db, id)
     return {ok: true}
 })

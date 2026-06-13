@@ -1,14 +1,22 @@
-import {createKit, createProduct, getDb, listKits, listProducts} from '../utils/db'
+import {createKit, createProduct, getDb, listKits, listProducts, purgeExpiredEntries} from '../utils/db'
 
 /**
- * Initialisiert die SQLite-Datenbank beim Serverstart (legt das Schema an) und
- * befüllt sie im Entwicklungsmodus mit ein paar Beispieldaten, damit die
- * Oberfläche sofort etwas anzeigen kann.
+ * Initialisiert die SQLite-Datenbank beim Serverstart (legt das Schema an),
+ * löscht abgelaufene Einträge (Aufbewahrungsfrist) und befüllt sie im
+ * Entwicklungsmodus mit Beispieldaten.
  */
 export default defineNitroPlugin(() => {
+    const config = useRuntimeConfig()
     const db = getDb()
 
-    if (!useRuntimeConfig().public.isDev) return
+    // Aufbewahrungsfrist direkt beim Start prüfen.
+    try {
+        purgeExpiredEntries(db, Number(config.retentionYears) || 5)
+    } catch (e) {
+        console.error('[DB] Aufbewahrungs-Löschung beim Start fehlgeschlagen:', e)
+    }
+
+    if (!config.public.isDev) return
 
     if (listKits(db).length === 0) {
         createKit(db, 'KASTEN-001', 'Raum 1.12')

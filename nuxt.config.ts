@@ -7,6 +7,8 @@ export default defineNuxtConfig({
     runtimeConfig: {
         // Pfad zur SQLite-Datei (server-only). Default: ./data/verbandbuch.db
         dbPath: '',
+        // Aufbewahrungsfrist der Einträge in Jahren (DGUV: mind. 5).
+        retentionYears: '5',
         // Login-Kennungen (kommagetrennt), die beim ersten Login automatisch
         // ADMIN-Rechte erhalten – zum Bootstrappen ohne Vor-Provisionierung.
         // Per NUXT_INITIAL_ADMINS überschreibbar.
@@ -17,6 +19,9 @@ export default defineNuxtConfig({
             // Entwicklungsmodus: Login ohne LDAP über devUser.json
             isDev: false,
             devUserIndex: 0,
+            // E-Mail der/des BGM-Beauftragten für die "Meldung vorbereiten"-Funktion
+            // (mailto-Link, funktioniert ohne Server-Mailversand).
+            bgmEmail: '',
         },
     },
 
@@ -36,10 +41,10 @@ export default defineNuxtConfig({
     },
 
     nitro: {
-        // better-sqlite3 ist ein natives Modul und darf nicht in das Bundle
-        // inlined werden – Nitro kopiert es als externe Abhängigkeit mit.
+        // Native bzw. dynamisch ladende Module nicht ins Bundle inlinen –
+        // Nitro kopiert sie als externe Abhängigkeiten mit.
         externals: {
-            external: ['better-sqlite3'],
+            external: ['better-sqlite3-multiple-ciphers', 'nodemailer'],
         },
     },
 

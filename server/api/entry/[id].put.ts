@@ -1,4 +1,12 @@
-import {getDb, getEntry, getKit, updateEntry, type EntryInput, type MaterialItem} from '../../utils/db'
+import {
+    getDb,
+    getEntry,
+    getKit,
+    recordEntryRevision,
+    updateEntry,
+    type EntryInput,
+    type MaterialItem,
+} from '../../utils/db'
 import {requireAuth} from '../../utils/auth'
 
 export default defineEventHandler(async (event) => {
@@ -36,6 +44,7 @@ export default defineEventHandler(async (event) => {
     if (body?.measures !== undefined) patch.measures = body.measures === null ? null : String(body.measures).trim()
     if (body?.message !== undefined) patch.message = body.message === null ? null : String(body.message).trim()
     if (body?.witness !== undefined) patch.witness = body.witness === null ? null : String(body.witness).trim()
+    if (body?.reportable !== undefined) patch.reportable = body.reportable === true
     if (body?.materialList !== undefined) {
         if (!Array.isArray(body.materialList)) {
             throw createError({statusCode: 400, statusMessage: 'materialList muss ein Array sein'})
@@ -46,5 +55,7 @@ export default defineEventHandler(async (event) => {
         }))
     }
 
-    return updateEntry(db, id, patch)
+    const updated = updateEntry(db, id, patch)
+    if (updated) recordEntryRevision(db, 'UPDATE', updated, {id: user.id, name: user.name})
+    return updated
 })

@@ -31,21 +31,45 @@
         show-expand
     >
       <template v-slot:item.actions="{ item }">
-        <div class="d-flex pa-2">
+        <div class="d-flex pa-2 ga-1">
           <v-btn
               icon="mdi-pencil"
               size="small"
+              variant="text"
+              title="Bearbeiten"
               @click="updateAccidentReport(item)"
+          />
+          <v-btn
+              icon="mdi-printer"
+              size="small"
+              variant="text"
+              title="Drucken / PDF"
+              :to="`/druck/${item.id}`"
+              target="_blank"
+          />
+          <v-btn
+              icon="mdi-history"
+              size="small"
+              variant="text"
+              title="Änderungsverlauf"
+              @click="showRevisions(item)"
           />
           <v-btn
               v-if="user?.role === UserRoleEnum.ADMIN"
               icon="mdi-delete"
               color="error"
-              class="ml-2"
+              variant="text"
               size="small"
+              title="Löschen"
               @click="openConfirmDialog = true; accidentReportToDelete = item"
           />
         </div>
+      </template>
+      <template v-slot:item.injuredPerson="{ item }">
+        {{ item.injuredPerson }}
+        <v-chip v-if="item.reportable" size="x-small" color="warning" variant="tonal" class="ml-1">
+          meldepflichtig
+        </v-chip>
       </template>
       <template v-slot:loading>
         <v-skeleton-loader type="table-row@10"></v-skeleton-loader>
@@ -106,11 +130,46 @@
   <app-dialog
       title="Eintrag löschen"
       v-model="openConfirmDialog"
-      text="Sind Sie sicher, dass Sie den Verbandsbucheintrag löschen wollen?"
+      text="Sind Sie sicher, dass Sie den Verbandsbucheintrag löschen wollen? Die Löschung wird revisionssicher protokolliert."
       confirm-text="Löschen"
       @confirm="deleteAccidentReport"
       @cancel="accidentReportToDelete = null"
   />
+
+  <v-dialog v-model="openRevisions" max-width="640">
+    <v-card>
+      <v-card-title class="d-flex align-center">
+        Änderungsverlauf
+        <v-spacer/>
+        <v-chip v-if="revisions.length && revisions.every(r => r.valid)" size="small" color="success" variant="tonal">
+          Hash-Kette unverändert
+        </v-chip>
+        <v-chip v-else-if="revisions.length" size="small" color="error" variant="tonal">
+          Manipulation erkannt!
+        </v-chip>
+      </v-card-title>
+      <v-card-text>
+        <v-timeline v-if="revisions.length" side="end" density="compact">
+          <v-timeline-item
+              v-for="r in revisions"
+              :key="r.seq"
+              :dot-color="r.action === 'DELETE' ? 'error' : r.action === 'CREATE' ? 'success' : 'primary'"
+              size="x-small"
+          >
+            <div class="text-body-2">
+              <strong>{{ actionLabel(r.action) }}</strong> – {{ formatDatetimeGerman(new Date(r.changedAt).toISOString()) }}
+            </div>
+            <div class="text-caption text-medium-emphasis">durch {{ r.changedBy || '—' }}</div>
+          </v-timeline-item>
+        </v-timeline>
+        <div v-else class="text-body-2">Kein Verlauf vorhanden.</div>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer/>
+        <v-btn @click="openRevisions = false">Schließen</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 <script lang="ts" setup>
 import {useAccidentReportStore} from "~/stores/accident-report.store";
@@ -171,6 +230,18 @@ const {smAndDown} = useDisplay()
 const headers = computed(() => smAndDown.value ? headersSmallScreen : headersLargeScreen)
 const openConfirmDialog = ref<boolean>(false);
 const accidentReportToDelete = ref<AccidentReport | null>(null)
+const openRevisions = ref<boolean>(false)
+const revisions = ref<Array<{seq: number; action: string; changedAt: string; changedBy: string; valid: boolean}>>([])
+
+function actionLabel(action: string) {
+  return action === 'CREATE' ? 'Angelegt' : action === 'UPDATE' ? 'Geändert' : 'Gelöscht'
+}
+
+async function showRevisions(item: AccidentReport) {
+  revisions.value = []
+  openRevisions.value = true
+  revisions.value = await accidentReportStore.getRevisions(item.id)
+}
 
 onMounted(async () => {
   loading.value = true
