@@ -80,8 +80,7 @@ export function getDb(): Database.Database {
     const file = configured ? resolve(configured) : resolve(process.cwd(), 'data', 'verbandbuch.db')
     mkdirSync(dirname(file), {recursive: true, mode: 0o700})
 
-    db = new Database(file)
-    applyEncryption(db, process.env.DB_ENCRYPTION_KEY)
+    db = openDatabase(file, process.env.DB_ENCRYPTION_KEY)
     db.pragma('journal_mode = WAL')
     db.pragma('foreign_keys = ON')
     initSchema(db)
@@ -89,33 +88,59 @@ export function getDb(): Database.Database {
     return db
 }
 
+function canRead(d: Database.Database): boolean {
+    try {
+        d.prepare('SELECT count(*) FROM sqlite_master').get()
+        return true
+    } catch {
+        return false
+    }
+}
+
 /**
- * Aktiviert die Verschlüsselung, falls ein Schlüssel gesetzt ist. Erkennt eine
- * bereits vorhandene Klartext-Datei und verschlüsselt sie transparent (rekey).
+ * Öffnet die Datenbank und wendet – falls DB_ENCRYPTION_KEY gesetzt ist – die
+ * Verschlüsselung an. Eine bereits vorhandene Klartext-Datei wird transparent
+ * verschlüsselt. Der Schlüssel wird stets ZUERST gesetzt (SQLCipher-Vorgabe);
+ * zum Umschlüsseln (rekey) muss WAL vorher beendet werden.
  */
-function applyEncryption(d: Database.Database, key: string | undefined): void {
+function openDatabase(file: string, key: string | undefined): Database.Database {
+    let d = new Database(file)
     if (!key) {
         console.warn(
             '[DB] DB_ENCRYPTION_KEY ist nicht gesetzt – die Datenbank wird UNVERSCHLÜSSELT gespeichert. ' +
                 'Für den Produktivbetrieb mit Gesundheitsdaten dringend einen Schlüssel setzen.',
         )
-        return
+        return d
     }
     const escaped = key.replace(/'/g, "''")
-    // Ist die Datei aktuell als Klartext lesbar (oder neu/leer)? Dann mit rekey
-    // verschlüsseln; andernfalls bestehende verschlüsselte Datei mit key öffnen.
-    let plaintext = false
-    try {
-        d.prepare('SELECT count(*) FROM sqlite_master').get()
-        plaintext = true
-    } catch {
-        plaintext = false
-    }
-    if (plaintext) {
+
+    // 1) Versuch: als verschlüsselte DB mit dem Schlüssel öffnen
+    //    (gilt auch für eine neue, leere Datei – sie wird damit verschlüsselt).
+    d.pragma(`key='${escaped}'`)
+    if (canRead(d)) return d
+
+    // 2) Schlüssel passt nicht → evtl. bestehende KLARTEXT-Datei. Frisch ohne
+    //    Schlüssel öffnen und prüfen.
+    d.close()
+    d = new Database(file)
+    if (canRead(d)) {
+        // Klartext-DB transparent verschlüsseln. rekey verlangt non-WAL:
+        try {
+            d.pragma('wal_checkpoint(TRUNCATE)')
+        } catch {
+            /* evtl. nicht im WAL-Modus – egal */
+        }
+        d.pragma('journal_mode = DELETE')
         d.pragma(`rekey='${escaped}'`)
-    } else {
-        d.pragma(`key='${escaped}'`)
+        console.info('[DB] Bestehende Klartext-Datenbank wurde verschlüsselt (rekey).')
+        return d
     }
+
+    // 3) Weder mit Schlüssel noch als Klartext lesbar → falscher Schlüssel.
+    d.close()
+    throw new Error(
+        'Datenbank konnte nicht entschlüsselt werden – stimmt DB_ENCRYPTION_KEY mit der vorhandenen Datei überein?',
+    )
 }
 
 /** Beschränkt die Dateirechte der DB (und WAL/SHM) auf den Eigentümer (0600). */
