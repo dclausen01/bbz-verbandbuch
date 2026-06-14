@@ -16,7 +16,12 @@ export default defineNuxtPlugin((app) => {
                 mdi,
             },
         },
-        ssr: true
+        // Beim Server-Rendering eine Desktop-Breite annehmen, damit die Sidebar
+        // schon im ersten Frame "permanent" gerendert wird und nicht erst nach
+        // der Hydration erscheint/verschwindet (Anwendung ist desktop-primär).
+        ssr: {
+            clientWidth: 1280,
+        },
     })
 
     app.vueApp.use(createRulesPlugin({
