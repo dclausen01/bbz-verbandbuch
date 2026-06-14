@@ -94,9 +94,11 @@ const {snackbar} = useSnackBar()
 const {mdAndUp} = useDisplay()
 const route = useRoute()
 
-// Auf großen Screens ist die Sidebar dauerhaft sichtbar (permanent), auf
-// kleinen ein Overlay, das geschlossen startet und nach Navigation zugeht.
-const isDrawerOpen = ref<boolean>(false);
+// Standardmäßig offen: Auf großen Screens ist die Sidebar damit dauerhaft
+// sichtbar (permanent). Auf kleinen Screens schließt Vuetify den Drawer
+// automatisch, sobald er "temporary" wird; der Watcher unten hält ihn nach
+// der Navigation geschlossen.
+const isDrawerOpen = ref<boolean>(true);
 watch(() => route.path, () => {
   if (!mdAndUp.value) isDrawerOpen.value = false
 })
